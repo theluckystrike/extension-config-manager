@@ -1,0 +1,37 @@
+{
+    "name": "extension-config-manager",
+    "version": "0.1.0",
+    "description": "Remote config manager for Chrome extensions — fetch remote configs, local fallbacks, config caching, schema validation, and hot reload.",
+    "author": "Zovo <hello@zovo.one>",
+    "license": "MIT",
+    "keywords": [
+        "chrome-extension",
+        "config",
+        "remote-config",
+        "settings",
+        "manifest-v3",
+        "browser-extension",
+        "configuration",
+        "schema",
+        "feature-config"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/theluckystrike/extension-config-manager.git"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "prepublishOnly": "npm run build"
+    },
+    "devDependencies": {
+        "@types/chrome": "^0.0.260",
+        "typescript": "^5.3.3"
+    }
+}
