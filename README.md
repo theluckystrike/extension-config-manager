@@ -1,201 +1,185 @@
-# extension-config-manager — Remote Config for Extensions
+# extension-config-manager
 
-> **Built by [Zovo](https://zovo.one)** | `npm i extension-config-manager`
+Remote and local configuration management for Chrome extensions. Handles remote config fetching, local caching with TTL, type-safe defaults, and change listeners using chrome.storage.
 
-Remote + local config management with caching, TTL, defaults, and change listeners for Chrome extensions.
+Built by Zovo (https://zovo.one) | npm i extension-config-manager
 
-## Features
 
-- **Remote Config** - Fetch config from remote URL
-- **Local Caching** - Cache config with TTL support
-- **Default Values** - Fallback to defaults when remote unavailable
-- **Change Listeners** - React to config changes
-- **TypeScript Support** - Full type safety
-
-## Installation
+INSTALLATION
 
 ```bash
 npm install extension-config-manager
 ```
 
-## Usage
 
-### Basic Setup
+FEATURES
 
-```typescript
-import { ConfigManager } from 'extension-config-manager';
+- Remote config fetching from any URL with automatic merge into local state
+- Local caching through chrome.storage.local with configurable TTL
+- Type-safe defaults that always apply as a fallback layer
+- Change listeners that fire when config values update
+- Written in TypeScript with full generic type inference
+- Works in Manifest V3 service workers and content scripts
 
-const config = new ConfigManager(
-  { theme: 'dark', maxResults: 10 }, // Default values
-  { remoteUrl: 'https://api.example.com/config.json' }
-);
 
-const theme = await config.get('theme');
-console.log(theme); // 'dark' or remote value
-```
-
-### Remote Config with TTL
+QUICK START
 
 ```typescript
 import { ConfigManager } from 'extension-config-manager';
 
 const config = new ConfigManager(
-  { apiUrl: 'https://api.example.com' },
+  { theme: 'dark', maxResults: 10, debug: false },
   {
+    storageKey: 'my_ext_config',
     remoteUrl: 'https://api.example.com/config.json',
-    ttl: 3600000 // 1 hour in milliseconds
-  }
-);
-```
-
-### Listening for Changes
-
-```typescript
-import { ConfigManager } from 'extension-config-manager';
-
-const config = new ConfigManager({ theme: 'light' });
-
-// Listen for config changes
-config.on('change', (key, newValue, oldValue) => {
-  console.log(`Config changed: ${key} from ${oldValue} to ${newValue}`);
-});
-
-// Update config
-await config.set('theme', 'dark');
-```
-
-### Manifest V3 / Service Worker Usage
-
-```typescript
-// background.ts (Service Worker)
-import { ConfigManager } from 'extension-config-manager';
-
-const config = new ConfigManager(
-  { debug: false, apiVersion: 'v1' },
-  {
-    remoteUrl: 'https://api.example.com/extension-config.json',
-    storage: 'chrome-storage' // Use chrome.storage instead of localStorage
+    cacheTTLMinutes: 120
   }
 );
 
-// Listen from background
-config.on('change', (key, value) => {
-  chrome.tabs.query({}).then(tabs => {
-    tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, { type: 'CONFIG_CHANGED', key, value });
-    });
-  });
-});
-```
-
-### Content Script Usage
-
-```typescript
-// content-script.ts
-import { ConfigManager } from 'extension-config-manager';
-
-// Use same defaults, config syncs via chrome.storage
-const config = new ConfigManager(
-  { theme: 'light', accentColor: '#007bff' },
-  { storage: 'chrome-storage' }
-);
-
+// Read a single value
 const theme = await config.get('theme');
-document.body.className = theme;
+
+// Write a single value
+await config.set('theme', 'light');
+
+// Get everything merged (defaults + stored)
+const all = await config.getAll();
 ```
 
-## API Reference
 
-### new ConfigManager(defaults, options?)
+CONSTRUCTOR OPTIONS
 
-Create a config manager instance.
-
-- `defaults` - Default configuration values
-- `options` - Configuration options
+ConfigManager accepts two arguments. The first is a defaults object containing every config key and its fallback value. The second is an optional options object.
 
 ```typescript
-interface ConfigOptions {
-  remoteUrl?: string;      // URL to fetch remote config
-  ttl?: number;            // Cache TTL in ms (default: 300000 = 5 min)
-  storage?: 'localStorage' | 'chrome-storage';
-  onError?: (error: Error) => void;
-}
+new ConfigManager(defaults, options?)
 ```
 
-### config.get(key)
+Options fields
 
-Get a config value (from cache or defaults).
+- storageKey (string, default "__ext_config__") - The key used in chrome.storage.local to persist config
+- remoteUrl (string, optional) - URL to fetch remote config JSON from
+- cacheTTLMinutes (number, default 60) - Minutes before remote config is considered stale
+
+
+API
+
+config.get(key)
+
+Returns the value for a single config key. Merges defaults with any stored overrides.
 
 ```typescript
 const theme = await config.get('theme');
 ```
 
-### config.set(key, value)
+config.set(key, value)
 
-Set a config value.
+Writes a single config value to chrome.storage.local.
 
 ```typescript
-await config.set('theme', 'dark');
+await config.set('debug', true);
 ```
 
-### config.getAll()
+config.getAll()
 
-Get all config values.
+Returns the full config object with defaults merged under any stored values.
 
 ```typescript
 const all = await config.getAll();
 ```
 
-### config.refresh()
+config.fetchRemote()
 
-Force refresh from remote URL.
+Fetches JSON from the configured remoteUrl, merges it over local config, stores the result, and records the fetch timestamp. Returns the merged config or null if no remoteUrl is set or the fetch fails.
 
 ```typescript
-await config.refresh();
+const updated = await config.fetchRemote();
 ```
 
-### config.on('change', callback)
+config.shouldFetchRemote()
 
-Listen for configuration changes.
+Returns true if enough time has passed since the last remote fetch (based on cacheTTLMinutes). Useful for gating fetch calls in service worker alarm handlers.
 
 ```typescript
-config.on('change', (key, newValue, oldValue) => {
-  // Handle change
+if (await config.shouldFetchRemote()) {
+  await config.fetchRemote();
+}
+```
+
+config.reset()
+
+Resets stored config back to the original defaults.
+
+```typescript
+await config.reset();
+```
+
+config.onChange(callback)
+
+Registers a listener on chrome.storage.onChanged that fires whenever the config storage key updates. The callback receives the new config state as a partial object.
+
+```typescript
+config.onChange((changes) => {
+  console.log('Config updated', changes);
 });
 ```
 
-## Storage Options
 
-### localStorage
-
-Default storage. Works in content scripts and popup/background.
+SERVICE WORKER EXAMPLE
 
 ```typescript
-const config = new ConfigManager(defaults, { storage: 'localStorage' });
+// background.ts
+import { ConfigManager } from 'extension-config-manager';
+
+const config = new ConfigManager(
+  { apiVersion: 'v2', debug: false },
+  {
+    remoteUrl: 'https://api.example.com/extension-config.json',
+    cacheTTLMinutes: 30
+  }
+);
+
+chrome.alarms.create('configRefresh', { periodInMinutes: 30 });
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'configRefresh' && await config.shouldFetchRemote()) {
+    await config.fetchRemote();
+  }
+});
+
+config.onChange((changes) => {
+  console.log('Config changed in background', changes);
+});
 ```
 
-### chrome.storage
 
-Recommended for Manifest V3. Syncs across all extension contexts.
+REMOTE CONFIG JSON FORMAT
 
-```typescript
-const config = new ConfigManager(defaults, { storage: 'chrome-storage' });
-```
-
-## Example Config JSON
+The remote endpoint should return a flat JSON object matching your defaults shape.
 
 ```json
 {
   "theme": "dark",
-  "accentColor": "#007bff",
-  "apiUrl": "https://api.example.com",
-  "featureFlags": {
-    "newUI": true,
-    "betaFeatures": false
-  }
+  "maxResults": 25,
+  "debug": false
 }
 ```
 
-## License
 
-MIT License
+DEVELOPMENT
+
+```bash
+git clone https://github.com/theluckystrike/extension-config-manager.git
+cd extension-config-manager
+npm install
+npm run build
+```
+
+
+LICENSE
+
+MIT License. See LICENSE file for details.
+
+---
+
+zovo.one
